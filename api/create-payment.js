@@ -15,7 +15,7 @@ export default function handler(req, res) {
   });
 
   const options = {
-    hostname: 'checkout-live.adyen.com',
+    hostname: 'ca4f1491abb67c33-GlobalBrother-checkout-live.adyenpayments.com',
     path: '/v68/payments',
     method: 'POST',
     headers: {
