@@ -1,3 +1,5 @@
+import https from 'https';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -6,8 +8,13 @@ export default async function handler(req, res) {
   try {
     const { email, amount } = req.body;
 
+    const agent = new https.Agent({
+      rejectUnauthorized: false
+    });
+
     const response = await fetch('https://checkout-live.adyen.com/v68/sessions', {
       method: 'POST',
+      agent: agent,
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': process.env.ADYEN_API_KEY
@@ -29,17 +36,13 @@ export default async function handler(req, res) {
       })
     });
 
-    const text = await response.text();
+    const data = await response.json();
 
-    return res.status(200).json({
-      status: response.status,
-      raw: text
-    });
+    return res.status(200).json(data);
 
   } catch (error) {
     return res.status(500).json({
-      error: error.message,
-      stack: error.stack
+      error: error.message
     });
   }
 }
