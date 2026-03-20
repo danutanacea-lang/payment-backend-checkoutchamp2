@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   try {
     const { email, amount } = req.body;
 
-    const response = await fetch('https://checkout-live.adyen.com/v69/sessions', {
+    const response = await fetch('https://checkout-live.adyen.com/v68/sessions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
