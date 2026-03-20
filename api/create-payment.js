@@ -2,13 +2,13 @@ import https from 'https';
 
 export default function handler(req, res) {
   try {
-    const { phone } = req.body;
+    const phone = req.body?.phone || '+351912345678'; // fallback for testing
 
     const data = JSON.stringify({
       merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
       amount: {
         currency: 'EUR',
-        value: 3900
+        value: 4900
       },
       reference: 'order-' + Date.now(),
       paymentMethod: {
@@ -35,6 +35,31 @@ export default function handler(req, res) {
       response.on('data', chunk => {
         body += chunk.toString();
       });
+
+      response.on('end', () => {
+        res.status(200).json({
+          status: response.statusCode,
+          response: body,
+          usedPhone: phone
+        });
+      });
+    });
+
+    request.on('error', (error) => {
+      res.status(500).json({
+        error: error.message
+      });
+    });
+
+    request.write(data);
+    request.end();
+
+  } catch (error) {
+    res.status(500).json({
+      error: error.message
+    });
+  }
+}      });
 
       response.on('end', () => {
         res.status(200).json({
