@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   try {
     const { email, amount } = req.body;
 
-    const response = await fetch('https://checkout-live-eu.adyen.com/v69/sessions', {
+    const response = await fetch('https://checkout-live.adyen.com/v69/sessions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -30,7 +30,13 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     return res.status(response.ok ? 200 : 500).json(data);
+
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    console.error('FULL ERROR:', error);
+
+    return res.status(500).json({
+      error: error.message,
+      details: error.toString()
+    });
   }
 }
