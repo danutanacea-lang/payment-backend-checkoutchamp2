@@ -32,7 +32,7 @@ function normalizePhone(input) {
 }
 
 function isValidPortugueseMobile(phone) {
-  return /^\+3519\d{8}$/.test(phone);
+    return /^\+3519\d{8}$/.test(phone) || /^9\d{8}$/.test(phone);
 }
 
 function readRequestBody(req) {
