@@ -1,59 +1,69 @@
 import https from 'https';
 
-export default async function handler(req, res) {
+const ALLOWED_ORIGIN = 'https://www.remedios-caseiros-de-antigamente.com';
+const ADYEN_HOSTNAME = 'ca4f1491abb67c33-GlobalBrother-checkout-live.adyenpayments.com';
+const ADYEN_PATH = '/checkout/v68/payments';
+const FIXED_AMOUNT = 4900;
+const RETURN_URL = 'https://www.remedios-caseiros-de-antigamente.com/upsell';
 
-  // ✅ CORS HEADERS (THIS FIXES EVERYTHING)
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function setCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
+}
 
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+function normalizePhone(input) {
+  let phone = String(input || '').trim();
+
+  phone = phone.replace(/[^\d+]/g, '');
+
+  if (!phone) return '';
+
+  if (!phone.startsWith('+')) {
+    if (phone.startsWith('351')) {
+      phone = '+' + phone;
+    } else if (/^\d{9}$/.test(phone)) {
+      phone = '+351' + phone;
+    }
   }
 
-  try {
+  return phone;
+}
+
+function isValidPortugueseMobile(phone) {
+  return /^\+3519\d{8}$/.test(phone);
+}
+
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
     let body = '';
+    let tooLarge = false;
 
-    await new Promise((resolve) => {
-      req.on('data', chunk => {
-        body += chunk;
-      });
-      req.on('end', resolve);
-    });
-
-    let parsed = {};
-    try {
-      parsed = JSON.parse(body);
-    } catch (e) {}
-
-    let phone = parsed.phone || '912345678';
-
-    if (!phone.startsWith('+')) {
-      if (phone.startsWith('351')) {
-        phone = '+' + phone;
-      } else {
-        phone = '+351' + phone;
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > 10000) {
+        tooLarge = true;
+        reject(new Error('Request body too large'));
+        req.destroy();
       }
-    }
-
-    const data = JSON.stringify({
-      merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
-      amount: {
-        currency: 'EUR',
-        value: 4900
-      },
-      reference: 'order-' + Date.now(),
-      paymentMethod: {
-        type: 'mbway',
-        telephoneNumber: phone
-      },
-      returnUrl: 'https://www.remedios-caseiros-de-antigamente.com/upsell'
     });
+
+    req.on('end', () => {
+      if (!tooLarge) resolve(body);
+    });
+
+    req.on('error', reject);
+  });
+}
+
+function callAdyen(payload) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(payload);
 
     const options = {
-      hostname: 'ca4f1491abb67c33-GlobalBrother-checkout-live.adyenpayments.com',
-      path: '/checkout/v68/payments',
+      hostname: ADYEN_HOSTNAME,
+      path: ADYEN_PATH,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -62,31 +72,113 @@ export default async function handler(req, res) {
       }
     };
 
-    const request = https.request(options, (response) => {
+    const request = https.request(options, response => {
       let responseData = '';
 
       response.on('data', chunk => {
-        responseData += chunk;
+        responseData += chunk.toString();
       });
 
       response.on('end', () => {
-        try {
-          const parsedResponse = JSON.parse(responseData);
-          res.status(200).json(parsedResponse);
-        } catch {
-          res.status(200).json({ raw: responseData });
-        }
+        resolve({
+          statusCode: response.statusCode || 500,
+          body: responseData
+        });
       });
     });
 
-    request.on('error', (error) => {
-      res.status(500).json({ error: error.message });
-    });
-
+    request.on('error', reject);
     request.write(data);
     request.end();
+  });
+}
 
+export default async function handler(req, res) {
+  setCors(res);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const origin = req.headers.origin || '';
+  const referer = req.headers.referer || '';
+  const contentType = req.headers['content-type'] || '';
+
+  if (origin && origin !== ALLOWED_ORIGIN) {
+    return res.status(403).json({ error: 'Invalid origin' });
+  }
+
+  if (referer && !referer.startsWith(ALLOWED_ORIGIN)) {
+    return res.status(403).json({ error: 'Invalid referer' });
+  }
+
+  if (!contentType.includes('application/json')) {
+    return res.status(400).json({ error: 'Content-Type must be application/json' });
+  }
+
+  if (!process.env.ADYEN_API_KEY || !process.env.ADYEN_MERCHANT_ACCOUNT) {
+    return res.status(500).json({ error: 'Server configuration missing' });
+  }
+
+  try {
+    const rawBody = await readRequestBody(req);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(rawBody || '{}');
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+
+    const phone = normalizePhone(parsed.phone);
+
+    if (!isValidPortugueseMobile(phone)) {
+      return res.status(400).json({ error: 'Invalid Portuguese mobile number' });
+    }
+
+    const payload = {
+      merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
+      amount: {
+        currency: 'EUR',
+        value: FIXED_AMOUNT
+      },
+      reference: 'order-' + Date.now(),
+      paymentMethod: {
+        type: 'mbway',
+        telephoneNumber: phone
+      },
+      returnUrl: RETURN_URL
+    };
+
+    const adyenResponse = await callAdyen(payload);
+
+    let parsedResponse;
+    try {
+      parsedResponse = JSON.parse(adyenResponse.body);
+    } catch {
+      return res.status(502).json({ error: 'Invalid response from Adyen' });
+    }
+
+    if (adyenResponse.statusCode >= 400) {
+      return res.status(adyenResponse.statusCode).json({
+        error: parsedResponse.message || 'Adyen request failed',
+        errorCode: parsedResponse.errorCode || null,
+        resultCode: parsedResponse.resultCode || null
+      });
+    }
+
+    return res.status(200).json({
+      pspReference: parsedResponse.pspReference || null,
+      resultCode: parsedResponse.resultCode || null,
+      action: parsedResponse.action || null
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({
+      error: 'Internal server error'
+    });
   }
 }
