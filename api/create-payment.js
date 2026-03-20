@@ -16,7 +16,15 @@ export default async function handler(req, res) {
       parsed = JSON.parse(body);
     } catch (e) {}
 
-    const phone = parsed.phone || '+351912345678';
+    let phone = parsed.phone || '912345678';
+
+    if (!phone.startsWith('+')) {
+      if (phone.startsWith('351')) {
+        phone = '+' + phone;
+      } else {
+        phone = '+351' + phone;
+      }
+    }
 
     const data = JSON.stringify({
       merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
@@ -51,26 +59,23 @@ export default async function handler(req, res) {
       });
 
       response.on('end', () => {
-        res.status(200).json({
-          adyenStatus: response.statusCode,
-          raw: responseData,
-          usedPhone: phone
-        });
+        try {
+          const parsedResponse = JSON.parse(responseData);
+          res.status(200).json(parsedResponse);
+        } catch {
+          res.status(200).json({ raw: responseData });
+        }
       });
     });
 
     request.on('error', (error) => {
-      res.status(500).json({
-        error: error.message
-      });
+      res.status(500).json({ error: error.message });
     });
 
     request.write(data);
     request.end();
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message
-    });
+    res.status(500).json({ error: error.message });
   }
 }
