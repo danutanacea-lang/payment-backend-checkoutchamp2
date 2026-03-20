@@ -3,7 +3,7 @@ import https from 'https';
 const ALLOWED_ORIGIN = 'https://www.remedios-caseiros-de-antigamente.com';
 const ADYEN_HOSTNAME = 'ca4f1491abb67c33-GlobalBrother-checkout-live.adyenpayments.com';
 const ADYEN_PATH = '/checkout/v68/payments';
-const FIXED_AMOUNT = 4900;
+const FIXED_AMOUNT = 3900;
 const RETURN_URL = 'https://www.remedios-caseiros-de-antigamente.com/upsell';
 
 function setCors(res) {
@@ -20,39 +20,32 @@ function normalizePhone(input) {
 
   if (!phone) return '';
 
-  if (!phone.startsWith('+')) {
-    if (phone.startsWith('351')) {
-      phone = '+' + phone;
-    } else if (/^\d{9}$/.test(phone)) {
-      phone = '+351' + phone;
-    }
-  }
+  if (phone.startsWith('+351')) return phone;
+
+  if (phone.startsWith('351')) return '+' + phone;
+
+  if (/^9\d{8}$/.test(phone)) return '+351' + phone;
 
   return phone;
 }
 
 function isValidPortugueseMobile(phone) {
-    return /^\+3519\d{8}$/.test(phone) || /^9\d{8}$/.test(phone);
+  return /^\+3519\d{8}$/.test(phone);
 }
 
 function readRequestBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    let tooLarge = false;
 
     req.on('data', chunk => {
       body += chunk;
       if (body.length > 10000) {
-        tooLarge = true;
-        reject(new Error('Request body too large'));
+        reject(new Error('Request too large'));
         req.destroy();
       }
     });
 
-    req.on('end', () => {
-      if (!tooLarge) resolve(body);
-    });
-
+    req.on('end', () => resolve(body));
     req.on('error', reject);
   });
 }
@@ -131,7 +124,7 @@ export default async function handler(req, res) {
     try {
       parsed = JSON.parse(rawBody || '{}');
     } catch {
-      return res.status(400).json({ error: 'Invalid JSON body' });
+      return res.status(400).json({ error: 'Invalid JSON' });
     }
 
     const phone = normalizePhone(parsed.phone);
@@ -160,22 +153,21 @@ export default async function handler(req, res) {
     try {
       parsedResponse = JSON.parse(adyenResponse.body);
     } catch {
-      return res.status(502).json({ error: 'Invalid response from Adyen' });
+      return res.status(502).json({ error: 'Invalid Adyen response' });
     }
 
     if (adyenResponse.statusCode >= 400) {
       return res.status(adyenResponse.statusCode).json({
-        error: parsedResponse.message || 'Adyen request failed',
-        errorCode: parsedResponse.errorCode || null,
-        resultCode: parsedResponse.resultCode || null
+        error: parsedResponse.message || 'Adyen error',
+        errorCode: parsedResponse.errorCode || null
       });
     }
 
     return res.status(200).json({
-      pspReference: parsedResponse.pspReference || null,
-      resultCode: parsedResponse.resultCode || null,
-      action: parsedResponse.action || null
+      resultCode: parsedResponse.resultCode,
+      pspReference: parsedResponse.pspReference
     });
+
   } catch (error) {
     return res.status(500).json({
       error: 'Internal server error'
