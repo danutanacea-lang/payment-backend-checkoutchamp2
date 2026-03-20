@@ -22,7 +22,10 @@ export default async function handler(req, res) {
         returnUrl: 'https://www.remedios-caseiros-de-antigamente.com/upsell',
         countryCode: 'PT',
         shopperEmail: email || 'test@email.com',
-        channel: 'Web'
+        channel: 'Web',
+        paymentMethod: {
+          type: 'mbway'
+        }
       })
     });
 
