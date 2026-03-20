@@ -2,15 +2,18 @@ import https from 'https';
 
 export default function handler(req, res) {
   try {
+    const { phone } = req.body;
+
     const data = JSON.stringify({
       merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
       amount: {
         currency: 'EUR',
-        value: 4900
+        value: 3900
       },
       reference: 'order-' + Date.now(),
       paymentMethod: {
-        type: 'mbway'
+        type: 'mbway',
+        telephoneNumber: phone
       },
       returnUrl: 'https://www.remedios-caseiros-de-antigamente.com/upsell'
     });
@@ -34,18 +37,16 @@ export default function handler(req, res) {
       });
 
       response.on('end', () => {
-        // ALWAYS return something, never crash
-        return res.status(200).json({
-          adyenStatus: response.statusCode,
-          raw: body || 'EMPTY RESPONSE'
+        res.status(200).json({
+          status: response.statusCode,
+          response: body
         });
       });
     });
 
     request.on('error', (error) => {
-      return res.status(500).json({
-        step: 'request_error',
-        message: error.message
+      res.status(500).json({
+        error: error.message
       });
     });
 
@@ -53,9 +54,8 @@ export default function handler(req, res) {
     request.end();
 
   } catch (error) {
-    return res.status(500).json({
-      step: 'outer_crash',
-      message: error.message
+    res.status(500).json({
+      error: error.message
     });
   }
 }
