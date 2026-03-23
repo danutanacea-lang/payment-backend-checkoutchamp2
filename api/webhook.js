@@ -1,12 +1,8 @@
-import https from 'https';
+import { markConfirmed } from './payment-status.js';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (req.method !== 'POST') {
+    return res.status(405).end();
   }
 
   try {
@@ -16,52 +12,44 @@ export default async function handler(req, res) {
       req.on('end', resolve);
     });
 
-    const { shopperReference, recurringDetailReference } = JSON.parse(body);
+    const notification = JSON.parse(body);
+    const items = notification?.notificationItems || [];
 
-    const data = JSON.stringify({
-      merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
-      amount: { currency: 'EUR', value: 4900 },
-      reference: 'upsell-' + Date.now(),
-      paymentMethod: {
-        type: 'mbway',
-        storedPaymentMethodId: recurringDetailReference
-      },
-      shopperReference: shopperReference,
-      shopperInteraction: 'ContAuth',
-      recurringProcessingModel: 'UnscheduledCardOnFile'
-    });
+    for (const item of items) {
+      const event = item.NotificationRequestItem;
 
-    const options = {
-      hostname: 'ca4f1491abb67c33-GlobalBrother-checkout-live.adyenpayments.com',
-      path: '/checkout/v68/payments',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': process.env.ADYEN_API_KEY,
-        'Content-Length': Buffer.byteLength(data)
-      }
-    };
+      if (event.eventCode === 'AUTHORISATION' && event.success === 'true') {
+        const orderId = event.merchantReference;
+        const recurringRef = event.additionalData?.['recurring.recurringDetailReference'];
+        const shopperRef = event.additionalData?.['recurring.shopperReference'];
 
-    const request = https.request(options, (response) => {
-      let responseData = '';
-      response.on('data', chunk => { responseData += chunk; });
-      response.on('end', () => {
-        try {
-          res.status(200).json(JSON.parse(responseData));
-        } catch {
-          res.status(200).json({ raw: responseData });
+        // Mark phone as confirmed for frontend polling
+        if (shopperRef) {
+          markConfirmed(shopperRef);
         }
-      });
-    });
 
-    request.on('error', (error) => {
-      res.status(500).json({ error: error.message });
-    });
+        // Mark order complete in CheckoutChamp
+        await fetch('https://api.checkoutchamp.com/order/update/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            loginId: process.env.CC_API_LOGIN,
+            password: process.env.CC_API_PASSWORD,
+            orderId: orderId,
+            orderStatus: 'complete'
+          })
+        });
 
-    request.write(data);
-    request.end();
+        if (recurringRef) {
+          console.log(`TOKEN for ${shopperRef}: ${recurringRef}`);
+        }
+      }
+    }
+
+    res.status(200).send('[accepted]');
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Webhook error:', error);
+    res.status(200).send('[accepted]');
   }
 }
