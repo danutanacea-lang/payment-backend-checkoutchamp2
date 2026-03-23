@@ -24,9 +24,9 @@ export default async function handler(req, res) {
         const shopperRef = event.additionalData?.['recurring.shopperReference'];
 
         // Mark phone as confirmed for frontend polling
-        if (shopperRef) {
-          markConfirmed(shopperRef);
-        }
+      if (shopperRef) {
+  markConfirmed(shopperRef, recurringRef);
+}
 
         // Mark order complete in CheckoutChamp
         await fetch('https://api.checkoutchamp.com/order/update/', {
