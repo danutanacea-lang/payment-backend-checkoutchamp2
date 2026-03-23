@@ -34,7 +34,7 @@ export default async function handler(req, res) {
 
     const data = JSON.stringify({
       merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
-      amount: { currency: 'EUR', value: 4900 },
+      amount: { currency: 'EUR', value: 3900 },
       reference: orderId,
       paymentMethod: { type: 'mbway', telephoneNumber: phone },
       returnUrl: 'https://www.remedios-caseiros-de-antigamente.com/upsell',
