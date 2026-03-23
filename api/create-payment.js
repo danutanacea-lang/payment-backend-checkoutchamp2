@@ -42,7 +42,8 @@ export default async function handler(req, res) {
       shopperName: { firstName: shopperName },
       shopperReference: phone,
       storePaymentMethod: true,
-      recurringProcessingModel: 'UnscheduledCardOnFile'
+      recurringProcessingModel: 'UnscheduledCardOnFile',
+      sessionValidity: new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('.000', '')
     });
 
     const options = {
