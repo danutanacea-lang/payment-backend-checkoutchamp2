@@ -1,7 +1,7 @@
-const confirmed = new Set();
+export const confirmed = new Map();
 
-export function markConfirmed(phone) {
-  confirmed.add(phone);
+export function markConfirmed(phone, recurringRef) {
+  confirmed.set(phone, recurringRef || true);
 }
 
 export default async function handler(req, res) {
