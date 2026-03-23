@@ -16,7 +16,9 @@ export default async function handler(req, res) {
       req.on('end', resolve);
     });
 
-    const { shopperReference, recurringDetailReference } = JSON.parse(body);
+    const { shopperReference } = JSON.parse(body);
+const { confirmed } = await import('./payment-status.js');
+const recurringDetailReference = confirmed.get(shopperReference);
 
     const data = JSON.stringify({
       merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
