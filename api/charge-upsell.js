@@ -22,7 +22,7 @@ const recurringDetailReference = confirmed.get(shopperReference);
 
     const data = JSON.stringify({
       merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
-      amount: { currency: 'EUR', value: 4900 },
+      amount: { currency: 'EUR', value: 7900 },
       reference: 'upsell-' + Date.now(),
       paymentMethod: {
         type: 'mbway',
