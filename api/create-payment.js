@@ -53,7 +53,8 @@ export default async function handler(req, res) {
       response.on('end', () => {
         try {
           const parsedResponse = JSON.parse(responseData);
-          res.status(200).json(parsedResponse);
+console.log('ADYEN RESPONSE:', JSON.stringify(parsedResponse));
+res.status(200).json(parsedResponse);
         } catch {
           res.status(200).json({ raw: responseData });
         }
