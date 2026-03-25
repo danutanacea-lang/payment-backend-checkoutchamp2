@@ -61,9 +61,10 @@ res.status(200).json(parsedResponse);
       });
     });
 
-    request.on('error', (error) => {
-      res.status(500).json({ error: error.message });
-    });
+   request.on('error', (error) => {
+  console.log('REQUEST ERROR:', error.message, error.code);
+  res.status(500).json({ error: error.message, code: error.code });
+});
 
     request.write(data);
     request.end();
