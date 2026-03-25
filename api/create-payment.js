@@ -19,31 +19,21 @@ export default async function handler(req, res) {
     let parsed = {};
     try { parsed = JSON.parse(body); } catch (e) {}
 
-    let phone = parsed.phone || '';
-    let orderId = parsed.orderId || ('order-' + Date.now());
-    let shopperEmail = parsed.email || '';
-    let shopperName = parsed.name || '';
-
-    if (!phone.startsWith('+')) {
-      if (phone.startsWith('351')) {
-        phone = '+' + phone;
-      } else {
-        phone = '+351' + phone;
-      }
-    }
+    const orderId = parsed.orderId || ('order-' + Date.now());
+    const shopperEmail = parsed.email || '';
+    const shopperName = parsed.name || '';
+    const amount = parsed.amount || 3900;
 
     const data = JSON.stringify({
       merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT,
-      amount: { currency: 'EUR', value: 3900 },
+      amount: { currency: 'EUR', value: amount },
       reference: orderId,
-      paymentMethod: { type: 'mbway', telephoneNumber: phone },
-      returnUrl: 'https://www.remedios-caseiros-de-antigamente.com/upsell',
+      paymentMethod: { type: 'multibanco' },
+      returnUrl: 'https://www.remedios-caseiros-de-antigamente.com/typagemulti',
       shopperEmail: shopperEmail,
       shopperName: { firstName: shopperName },
-      shopperReference: phone,
-      storePaymentMethod: true,
-      recurringProcessingModel: 'UnscheduledCardOnFile',
-      sessionValidity: new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('.000', '')
+      countryCode: 'PT',
+      shopperLocale: 'pt-PT'
     });
 
     const options = {
