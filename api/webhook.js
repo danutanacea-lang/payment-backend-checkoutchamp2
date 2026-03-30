@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 
-// In-memory set to prevent duplicate order creation
 const processedPayments = new Set();
 
 function verifyHmac(notification, hmacKey) {
@@ -23,19 +22,15 @@ function verifyHmac(notification, hmacKey) {
     const keyBytes = Buffer.from(hmacKey, 'hex');
     const hmac = crypto.createHmac('sha256', keyBytes);
     hmac.update(signedData, 'utf8');
-    const computed = hmac.digest('base64');
-
-    return computed === hmacSignature;
+    return hmac.digest('base64') === hmacSignature;
   } catch (e) {
-    console.error('HMAC verification error:', e.message);
+    console.error('HMAC error:', e.message);
     return false;
   }
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).end();
-  }
+  if (req.method !== 'POST') return res.status(405).end();
 
   try {
     let body = '';
@@ -51,70 +46,43 @@ export default async function handler(req, res) {
     for (const item of items) {
       const event = item.NotificationRequestItem;
 
-      // --- HMAC verification ---
-      if (hmacKey) {
-        const valid = verifyHmac(item, hmacKey);
-        if (!valid) {
-          console.warn('Invalid HMAC signature — ignoring event:', event.pspReference);
-          continue;
-        }
+      if (hmacKey && !verifyHmac(item, hmacKey)) {
+        console.warn('Invalid HMAC — ignoring:', event.pspReference);
+        continue;
       }
 
-      if (event.eventCode === 'AUTHORISATION' && event.success === 'true') {
-        const pspReference = event.pspReference;
-        const orderId = event.merchantReference;
-        const paymentMethod = event.paymentMethod;
+      const pspReference  = event.pspReference;
+      const orderId       = event.merchantReference;
+      const paymentMethod = event.paymentMethod;
+      const eventCode     = event.eventCode;
+      const success       = event.success === 'true';
 
-        // --- Duplicate protection ---
-        if (processedPayments.has(pspReference)) {
-          console.log(`Duplicate event ignored: ${pspReference}`);
-          continue;
-        }
-        processedPayments.add(pspReference);
+      if (paymentMethod !== 'multibanco') continue;
 
-        // --- MULTIBANCO only ---
-        if (paymentMethod === 'multibanco') {
-          console.log(`MULTIBANCO AUTHORISATION received — order: ${orderId}, psp: ${pspReference}`);
+      const eventKey = `${pspReference}-${eventCode}`;
+      if (processedPayments.has(eventKey)) {
+        console.log(`Duplicate ignored: ${eventKey}`);
+        continue;
+      }
+      processedPayments.add(eventKey);
 
-          const meta = event.additionalData || {};
-          const firstName = meta['metadata.firstName'] || 'Multibanco';
-          const lastName  = meta['metadata.lastName']  || 'Customer';
-          const email     = meta['metadata.email']     || '';
-          const phone     = meta['metadata.phone']     || '000000000';
-          const address1  = meta['metadata.address1']  || 'N/A';
-          const city      = meta['metadata.city']      || 'N/A';
-          const zip       = meta['metadata.zip']       || '0000-000';
-          const country   = meta['metadata.country']   || 'PT';
-          const quantity  = parseInt(meta['metadata.quantity'] || '1');
+      if (eventCode === 'AUTHORISATION' && success) {
+        console.log(`MULTIBANCO PAID — updating to complete, order: ${orderId}`);
 
-          const ccResponse = await fetch('https://api.checkoutchamp.com/order/import/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              loginId:        process.env.CC_API_LOGIN,
-              password:       process.env.CC_API_PASSWORD,
-              campaignId:     process.env.CC_CAMPAIGN_ID,
-              orderStatus:    'complete',
-              paymentStatus:  'complete',
-              firstName:      firstName,
-              lastName:       lastName,
-              email:          email,
-              address1:       address1,
-              city:           city,
-              state:          'N/A',
-              zip:            zip,
-              country:        country,
-              phone:          phone,
-              productId:      process.env.CC_PRODUCT_ID,
-              productQty:     quantity,
-              transactionId:  pspReference,
-              externalOrderId: orderId
-            })
-          });
+        // Try updating by externalOrderId (our merchantReference)
+        const updateRes = await fetch('https://api.checkoutchamp.com/order/update/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            loginId:         process.env.CC_API_LOGIN,
+            password:        process.env.CC_API_PASSWORD,
+            externalOrderId: orderId,
+            orderStatus:     'complete'
+          })
+        });
 
-          const ccData = await ccResponse.json();
-          console.log('CC order/import response:', JSON.stringify(ccData));
-        }
+        const updateData = await updateRes.json();
+        console.log('CC order/update response:', JSON.stringify(updateData));
       }
     }
 
