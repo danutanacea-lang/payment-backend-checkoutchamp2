@@ -69,16 +69,27 @@ export default async function handler(req, res) {
       if (eventCode === 'AUTHORISATION' && success) {
         console.log(`MULTIBANCO PAID — updating to complete, order: ${orderId}`);
 
-        // Try updating by externalOrderId (our merchantReference)
+        // Retrieve CC orderId from Adyen payment additionalData
+        const ccOrderId = event.additionalData?.['metadata.ccOrderId'] || null;
+        console.log('CC orderId from metadata:', ccOrderId);
+
+        // Build update payload — prefer native CC orderId, fallback to externalOrderId
+        const updatePayload = {
+          loginId:      process.env.CC_API_LOGIN,
+          password:     process.env.CC_API_PASSWORD,
+          orderStatus:  'complete',
+          paymentStatus: 'paid'
+        };
+        if (ccOrderId) {
+          updatePayload.orderId = ccOrderId;
+        } else {
+          updatePayload.externalOrderId = orderId;
+        }
+
         const updateRes = await fetch('https://api.checkoutchamp.com/order/update/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            loginId:         process.env.CC_API_LOGIN,
-            password:        process.env.CC_API_PASSWORD,
-            externalOrderId: orderId,
-            orderStatus:     'complete'
-          })
+          body: JSON.stringify(updatePayload)
         });
 
         const updateData = await updateRes.json();
