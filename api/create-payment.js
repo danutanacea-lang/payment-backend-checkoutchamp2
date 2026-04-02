@@ -56,7 +56,8 @@ export default async function handler(req, res) {
         'metadata.city':      city,
         'metadata.zip':       zip,
         'metadata.country':   country,
-        'metadata.quantity':  String(quantity)
+        'metadata.quantity':  String(quantity),
+        'metadata.ccOrderId': '' // populated below after CC call
       },
       countryCode: 'PT',
       shopperLocale: 'pt-PT'
@@ -119,9 +120,48 @@ export default async function handler(req, res) {
       const ccResult = await ccResponse.json();
       console.log('CC order/import response:', JSON.stringify(ccResult));
 
-      // Attach CC orderId to the response so webhook can use it
-      adyenResponse._ccOrderId = ccResult.message?.orderId || null;
-      console.log('CC orderId:', adyenResponse._ccOrderId);
+      const ccOrderId = ccResult.message?.orderId || null;
+      adyenResponse._ccOrderId = ccOrderId;
+      console.log('CC orderId:', ccOrderId);
+
+      // ── Step 3: Patch Adyen payment metadata with CC orderId ──
+      // So the webhook can retrieve it without a DB
+      if (ccOrderId && adyenResponse.pspReference) {
+        const patchData = JSON.stringify({
+          applicationInfo: {
+            externalPlatform: {
+              name: 'custom',
+              version: '1.0'
+            }
+          },
+          metadata: { ccOrderId: String(ccOrderId) }
+        });
+        const pspRef = encodeURIComponent(adyenResponse.pspReference);
+        const patchOptions = {
+          hostname: 'ca4f1491abb67c33-GlobalBrother-checkout-live.adyenpayments.com',
+          path: `/checkout/v68/payments/${pspRef}/details`,
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': process.env.ADYEN_API_KEY,
+            'Content-Length': Buffer.byteLength(patchData)
+          }
+        };
+        try {
+          await new Promise((resolve, reject) => {
+            const r = https.request(patchOptions, (response) => {
+              response.on('data', () => {});
+              response.on('end', resolve);
+            });
+            r.on('error', reject);
+            r.write(patchData);
+            r.end();
+          });
+          console.log('Patched Adyen metadata with ccOrderId:', ccOrderId);
+        } catch (e) {
+          console.warn('Could not patch Adyen metadata:', e.message);
+        }
+      }
     }
 
     res.status(200).json(adyenResponse);
